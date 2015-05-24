@@ -1,0 +1,31 @@
+#!/bin/bash
+
+if [ "$1" == "-h" ]; then
+  echo "Usage: `basename $0` <optional: filter>"
+  exit 0
+fi
+
+
+contains=$1
+
+echo "IMG" "MODES" "LOW FREQUENCIES" "FILE"
+echo "----------------------------"
+
+for file in `ls *${contains}*`; do
+ if [[ $file == *"_freq_"* ]] && [[ $file == *".log" ]]; then
+  
+	freq=`awk '
+		BEGIN{low_freq1=-1; low_freq2=-1; vib_modes=0; vib_img=0}
+		$1=="Low" && $2=="frequencies"{
+			if(low_freq1==-1){low_freq1=$4"\t"$5"\t"$6"\t"$7"\t"$8"\t"$9}else{
+			low_freq2=$4"\t"$5"\t"$6}}
+		$1=="Frequencies" && $2=="--"{vib_modes++; for(i = 3; i <= NF; i++){if($i<0){vib_img=1} }}
+		END{if(vib_modes==0){print "ERR\t"vib_modes"\t"low_freq1"\t"low_freq2}else{
+			if(vib_img==1){print "IMG\t"vib_modes"\t"low_freq1"\t"low_freq2}else{
+			print "ok\t"vib_modes"\t"low_freq1"\t"low_freq2}}}
+		' $file ` 
+	echo $freq $file
+
+ fi
+done
+

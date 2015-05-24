@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# a script to restart the optimization at point it has stopped reading
+# the current geometry and forcing Gaussian to rebuild the set of red. internals using
+# final file name structure is; {prefix}_{molecules}_{position}_{basis set}_{dispersion correction}_{analysis}_{suffix}.com
+
+if [ "$1" == "-h" ]; then
+  echo "Usage: `basename $0` <optional: filter>"
+  exit 0
+fi
+
+contains=$1 # file contains the string
+
+fail_dir="failed_runs"
+mkdir $fail_dir
+
+for file_log in `ls *${contains}*.log`; do
+
+	file_name="${file_log%%.*}"
+
+	error=`awk ' BEGIN{error=0}{if($1=="Error" && $2=="termination"){error=1}}END{print error}' "${file_name}.log"`
+	
+	# spaces 0 = space below options
+	# spaces 1 = comments
+	# spaces 2 = charge, multiplicity
+	# spaces 3 = geometry
+	# spaces 4 = connectivity
+	# spaces 5 = other 
+	if [ $error -eq 1 ]; then
+		if [ -f "${file_name}.chk" ] && [ -f "${file_name}.com" ]; then
+			echo "creating rebuilt run for $file_name"
+			cp "${file_name}.com" "$fail_dir/${file_name}.com"
+			cp "${file_name}.chk" "$fail_dir/${file_name}.chk"
+			cp "${file_name}.log" "$fail_dir/${file_name}.log"
+		
+			awk -v chk="${file_name}_err.chk" 'BEGIN{found=0; spaces=0; chkpt=0; connect=0}{
+			if(substr($1,1,4)=="%chk"){print "%chk=" chk; next}
+			if(found==1){
+				if(chkpt==1){print; next}
+				if(!NF){spaces+=1; if(spaces!=4){print}; next}
+				if(spaces==2){print; if(connect=1){spaces+=1}else{spaces+=2}; next} 
+				if(spaces==3){next}
+				if(spaces==4){next}
+				print; next
+				}
+			if(substr($1,1,1)=="#"){
+				options="#"
+				for(i = 2; i <= NF; i++){
+					if(substr($i,1,4)=="geom"){
+					if(index($i, "connectivity") != 0){connect=1};
+					if(index($i, "checkpoint") != 0){chkpt=1}}
+					else{options=options " " $i}}
+				print options " geom=(checkpoint,newdefinition)"; found=1; next}
+			{print}
+			}' "${file_name}.com" > "${file_name}_err.com"
+
+			cp "${file_name}.chk" "${file_name}_err.chk"
+			rm "${file_name}.chk"
+			rm "${file_name}.com"
+			rm "$file_log"
+		else
+			echo "No com or chk file for $file_name"
+		fi
+	fi
+done
+

@@ -1,0 +1,44 @@
+#!/bin/bash
+
+if [ "$1" == "-h" ]; then
+  echo "Usage: `basename $0` <optional: filter>"
+  exit 0
+fi
+
+contains=$1
+script=$2
+
+dflt_script="/home/cjs14/bin/pqph_8"
+
+if [ -z "$script" ]; then script=$dflt_script ; fi
+
+file_num=0
+for file in `ls *${contains}*.com`; do
+	if [ ${file: -9} == "_init.com" ]; then continue; fi
+
+	# check with user
+	echo "$file to $script"
+	read -r -p "Are you sure? [y/N] " response
+	if [[ $response =~ ^([yY][eE][sS]|[yY])$ ]]
+	then
+    		a=1
+	else
+		continue
+	fi
+
+	((file_num++))
+
+        # extract info from file name delimited by _
+        IFS='_' read -a array <<< "${file%%.*}"
+        prefix="${array[0]}"
+        mol="${array[1]}"
+        pos="${array[2]}"
+        bas="${array[3]}"
+        dis="${array[4]}"
+        ana="${array[5]}"
+
+	name="${mol:0:1}${mol: -1}_${pos:0:1}${pos: -1}_${bas:0:2}_${dis:0:1}_${ana:0:2}${file_num}"
+	echo "running under the name: $name"
+	qsub -N $name -v in=${file%%.*} $script
+done
+

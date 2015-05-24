@@ -1,0 +1,144 @@
+#!/bin/bash
+
+# a script to take a basic gaussian geometry file and set it up for a particular run
+# filnal file name structure is; {prefix}_{molecules}_{position}_{basis set}_{dispersion correction}_{analysis}_{suffix}.com
+
+if [ "$1" == "-h" ]; then
+  echo "Usage: `basename $0` <optional: filter> <optional: suffix> <optional last_line>"
+  exit 0
+fi
+
+contains=$1
+suffix=$2
+lastline=$3
+
+xc_funcs_all=("b3lyp")
+basis_sets_all=("3-21g" "6-31g" "6-31g(d,p)" "6-311g" "6-311g(d,p)" "6-311+g(d,p)" "aug-cc-pvtz")
+disp_corrections_all=("-" "gd3bj")
+analysis_all=("opt" "opt=modredundant" "freq" "pop(nbo,full)")
+dflt_procs=8
+dflt_mem="15000MB"
+
+# function to test if array contains an element
+array_contains () {
+    local name=$1[@]
+    local array=("${!name}")
+    local seeking=$2
+    local in=1
+    for element in "${!array}"; do
+        if [[ $element == $seeking ]]; then
+            in=0
+            break
+        fi
+    done
+    return $in
+}
+
+# function to create a sub array via user selection from a sub array
+create_group () {
+ local name=$1[@]
+ local array=("${!name}")
+ output=()
+ select element in "END" ${array[*]};
+ do
+  local el=$element
+  if [ $el = "END" ]; then
+   break
+  fi
+  array_contains array $el
+  if [ $? = 1 ]; then
+   output=(${output[@]} $el)
+  fi
+ done
+ echo ${output[*]}
+}
+
+# choose options for run
+xc_funcs=(${xc_funcs_all[*]}) #assume for now that only using b3lyp
+echo "enter basis sets required:"
+basis_sets=($(create_group basis_sets_all))
+echo "enter dispersion corrections required:"
+disp_corrections=($(create_group disp_corrections_all))
+echo "enter analysis required:"
+analysis=($(create_group analysis_all))
+
+for file_com in `ls *${contains}*_init.com`; do
+
+        # check with user
+        echo "create from $file_com"
+        read -r -p "Are you sure? [y/N] " response
+        if [[ $response =~ ^([nN][oO]|[nN])$ ]]
+        then
+                continue
+        fi
+
+	# extract info from file name delimited by _
+	IFS='_' read -a array <<< "${file_com%%.*}"
+	prefix="${array[0]}"
+	mol="${array[1]}"
+	pos="${array[2]}"
+
+	for xcf in ${xc_funcs[*]}; do
+	for bas in ${basis_sets[*]}; do
+	for dis in ${disp_corrections[*]}; do
+	for ana in ${analysis[*]}; do
+
+	    	
+
+    		#sanitized new file name
+		uncln_new_file_name=$prefix"_"$mol"_"$pos"_"$bas"_"$dis"_"$ana"_"$suffix
+    		new_file_name=`echo ${uncln_new_file_name} | tr -cs "[:alnum:]_+-" - `
+		new_file_name=${new_file_name%?} #remove last '-' thats added
+		
+		echo "creating" $new_file_name "from;" $file_com
+
+		# section 1(process), 2(mem), 3(chk), 4(opt), 5(space),
+		# 6(descriptor+space), 7(charge), 8(space), 9(geom+space), 10(connectivity+space), 11(frozen)
+    		awk -v date="`date`" -v proc=$dflt_procs -v mem=$dflt_mem -v old_file=$file_com -v file=$new_file_name -v opt=$ana -v fun=$xcf -v set=$bas -v disp=$dis '
+        		BEGIN{sect=1; geo=""}
+        		{
+        		if(sect==1){
+                		if(substr($1,1,12)=="%nprocshared"){print $1; sect++; next}else{
+                        		print "%nprocshared=" proc; sect++}
+               			}	
+        		if(sect==2){
+                		if(substr($1,1,4)=="%mem"){print $1; sect++; next}else{
+                        		print "%mem=" mem; sect++};
+                		}
+        		if(sect==3){print "%chk=" file ".chk"; sect++; next}
+        		if(sect==4){if(substr($1,1)=="#"){
+           			for(i = 2; i <= NF; i++){
+					if($i=="geom=connectivity"){geo="geom=connectivity"}};
+           			if(disp!="-"){
+                		dis="empiricaldispersion=" disp}else{dis=""};
+				if(opt=="pop(nbo,full)"){opt1=opt " GFInput"}else{opt1=opt};
+           			oth="integral=grid=ultrafine scf=conver=9";
+           			printf "# %s %s/%s %s %s %s \n", opt1,fun,set,geo,oth,dis;
+           			sect++; next}}
+        		if(sect==5 && !NF){print; sect++; next}
+        		if(sect==6){if(!NF){
+           			print "created on; " date ", from; " old_file; print; sect++; next}
+					else{print; next}}
+        		if(sect==7){print; sect++; next}
+			if(sect==8){if(!NF){print; sect=11; next}else{sect++}}
+        		if(sect==9 && NF){print; next}
+        		if(sect==9 && !NF){print; sect++; next}
+        		if(sect==10 && NF){if(geo=="geom=connectivity"){print}; next}
+        		if(sect==10 && !NF){if(geo=="geom=connectivity"){print}; sect++; next}
+        		if(sect==11 && NF){print; next}
+        		if(sect==11 && !NF){print; sect++; next}
+        		if(sect==12){print; next}
+        		}
+        		END{}
+        	' "${file_com}" > "${new_file_name}.com"
+
+	        if [ ! -z  "$lastline" ] ; then
+        	        echo "$lastline" >> "${new_file_name}.com"
+       		fi
+		
+
+	done
+	done
+	done
+	done
+done

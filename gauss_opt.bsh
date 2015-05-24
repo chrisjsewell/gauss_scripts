@@ -1,0 +1,35 @@
+#!/bin/bash
+
+if [ "$1" == "-h" ]; then
+  echo "Usage: `basename $0` <optional: filter>"
+  exit 0
+fi
+
+contains=$1
+
+
+
+echo "CONVERGE" "STEPS" "ENERGY" "RMS" "ENERGY_DIFF" "FILE"
+echo "--------" "-----" "-----" "---" "-----------" "----"
+
+for file in `ls *${contains}*`; do
+ if [[ $file == *"_opt"* ]] && [[ $file == *".log" ]]; then
+  
+	converg=`awk '
+		BEGIN{au_kJmol=2625.5; au_kcalmol=627.51; error=0; incon=0; numcons=0; hascon=0; steps=0; energy_type=-1; energy=-1; old_energy=-1; rms=-1}
+		$1=="Error" && $2=="termination"{error=1; next}
+		hascon==1{next}
+		$1=="SCF" && $2=="Done:"{old_energy=energy; energy_type=$3$4; energy=$5; next}
+		$1=="Cartesian" && $5=="RMS"{rms=$6; next}
+		NF==4{if($4=="Converged?"){incon=1; steps++; next}}
+		incon==1{if($5=="YES"){numcons++}else{
+			numcons=0; incon=0}}
+		numcons==4{hascon=1; incon=0; next}
+		END{if(old_energy==-1){e_diff=-1}else{e_diff=old_energy-energy}; if(hascon==1){print "yes",steps,energy_type,energy,rms,e_diff}else{
+			if(error==1){msg="ERROR!"}else{msg="#NO"};print msg,steps,energy_type,energy,rms,e_diff}}
+		' $file ` 
+	echo $converg $file
+
+ fi
+done
+
