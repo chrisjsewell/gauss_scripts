@@ -1,0 +1,45 @@
+#!/bin/sh
+
+# submit jobs to the que with this script using the following command:
+# rng4 is this script
+# jobname is a name you will see in the qstat command
+# name is the actual file minus .com etc it is passed into this script as ${in}
+#
+# qsub rng4_d01 -N jobname -v in=name
+
+# batch processing commands
+#PBS -l walltime=499:59:00
+#PBS -lselect=1:ncpus=16:mem=32000MB:tmpspace=800gb 
+#PBS -j oe
+#PBS -q pqph
+#PBS -m ae
+
+# load modules
+#
+module load gaussian/g09-d01
+
+# check for a checkpoint file
+#
+# variable PBS_O_WORKDIR=directory from which the job was submited.
+   test -r $PBS_O_WORKDIR/${in}.chk
+   if [ $? -eq 0 ]
+   then
+     echo "located $PBS_O_WORKDIR/${in}.chk"
+     cp $PBS_O_WORKDIR/${in}.chk $TMPDIR/.
+   else
+     echo "no checkpoint file $PBS_O_WORKDIR/${in}.chk"
+   fi
+#
+# run gaussian
+#
+  g09 $PBS_O_WORKDIR/${in}.com
+  cp $TMPDIR/${in}.chk /$PBS_O_WORKDIR/.
+  cp $TMPDIR/${in}.wfx /$PBS_O_WORKDIR/.
+#  cp *.chk /$PBS_O_WORKDIR/pbs_${in}.chk
+#  test -r $TMPDIR/fort.7
+#  if [ $? -eq 0 ]
+#  then
+#    cp $TMPDIR/fort.7 /$PBS_O_WORKDIR/${in}.mos
+#  fi
+# exit
+
